@@ -1,0 +1,529 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AdminStatus {
+  Active @map("active")
+
+  @@map("admin_status")
+}
+
+model Admin {
+  id           BigInt       @id @default(autoincrement())
+  firstname    String
+  lastname     String
+  email        String       @unique
+  secret       String?
+  profileImage String?      @map("profile_image")
+  status       AdminStatus  @default(Active)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  meta         AdminMeta?
+  AdminWallet  AdminWallet?
+
+  @@map("admin")
+}
+
+model AdminMeta {
+  passwordSalt String? @map("password_salt")
+  passwordHash String? @map("password_hash")
+  admin        Admin   @relation(fields: [adminId], references: [id])
+  adminId      BigInt  @unique() @map("admin_id")
+
+  @@map("admin_meta")
+}
+
+enum UserStatus {
+  Active  @map("active")
+  Blocked @map("blocked")
+
+  @@map("user_status")
+}
+
+model User {
+  id                BigInt                   @id @default(autoincrement())
+  fullname          String
+  username          String?                  @unique
+  dialCode          String?                  @map("dial_code")
+  mobile            String?                  @unique
+  profileImage      String?                  @map("profile_image")
+  referralCode      String?                  @unique
+  referralCount     Int                      @default(0)
+  lastLoginAt       DateTime                 @map("last_login_at")
+  isBot             Boolean                  @default(false) @map("is_bot")
+  isVerified        Boolean                  @default(false) @map("is_verified")
+  hasViewedTutorial Boolean                  @default(false) @map("has_viewed_tutorial")
+  country           String?
+  status            UserStatus               @default(Active)
+  isDeleted         Boolean                  @default(false)
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  meta              UserMeta?
+  wallet            UserWallet?
+  settings          UserSetting[]
+  transactions      AdminWalletTransaction[]
+  sheets            Sheet[]
+  payments          Payment[]
+  joinedGames       JoinGame[]
+  purchases         SheetPurchase[]
+  Referrals         Referrals[]              @ignore
+  payment_requests  PaymentRequest[]
+
+  @@map("user")
+}
+
+model UserMeta {
+  googleId     String? @unique @map("google_id")
+  passwordSalt String? @map("password_salt")
+  passwordHash String? @map("password_hash")
+  user         User    @relation(fields: [userId], references: [id])
+  userId       BigInt  @unique() @map("user_id")
+
+  @@map("user_meta")
+}
+
+model Referrals {
+  id       Int     @id @default(autoincrement())
+  code     String  @unique
+  redeemed Boolean @default(false)
+  by       User    @relation(fields: [byId], references: [id])
+  byId     BigInt  @map("by_user_id")
+
+  @@map("referrals")
+  @@ignore
+}
+
+enum OtpTransport {
+  Mobile @map("mobile")
+  Email  @map("email")
+
+  @@map("otp_transport")
+}
+
+model Otp {
+  code             String
+  attempt          Int          @default(1) @db.SmallInt
+  lastSentAt       DateTime     @default(now()) @map("last_sent_at")
+  retries          Int          @default(0) @db.SmallInt
+  transport        OtpTransport
+  target           String
+  lastCodeVerified Boolean      @default(false) @map("last_code_verified")
+  blocked          Boolean      @default(false)
+
+  @@unique([transport, target])
+  @@map("otp")
+}
+
+enum SettingType {
+  Binary       @map("binary")
+  MultiSelect  @map("multi_select")
+  SingleSelect @map("single_select")
+
+  @@map("setting_type")
+}
+
+enum SettingContext {
+  User   @map("user")
+  System @map("System")
+
+  @@map("setting_context")
+}
+
+model Setting {
+  id               Int             @id @default(autoincrement())
+  mappedTo         String          @map("mapped_to")
+  text             String          @default("")
+  description      String          @default("")
+  type             SettingType
+  context          SettingContext
+  default          Json
+  isDefinedOptions Boolean         @map("is_defined_options")
+  subSettings      Setting[]       @relation("SubSettings")
+  dependsOn        Setting?        @relation("SubSettings", fields: [parentId], references: [id])
+  parentId         Int?            @map("parent_id")
+  options          SettingOption[]
+  userSettings     UserSetting[]
+  systemSettings   SystemSetting[]
+
+  @@unique([context, mappedTo])
+  @@map("setting")
+}
+
+model SettingOption {
+  id        Int     @id @default(autoincrement())
+  text      String  @default("")
+  value     String
+  setting   Setting @relation(fields: [settingId], references: [id])
+  settingId Int     @map("setting_id")
+
+  @@unique([value, settingId])
+  @@map("setting_option")
+}
+
+model UserSetting {
+  selection Json
+  user      User    @relation(fields: [userId], references: [id])
+  userId    BigInt  @map("user_id")
+  setting   Setting @relation(fields: [settingId], references: [id])
+  settingId Int     @map("setting_id")
+
+  @@id([userId, settingId])
+  @@map("user_setting")
+}
+
+model SystemSetting {
+  selection Json
+  setting   Setting @relation(fields: [settingId], references: [id])
+  settingId Int     @map("setting_id")
+
+  @@id([settingId])
+  @@map("system_setting")
+}
+
+model UserWallet {
+  id              BigInt              @id @default(autoincrement())
+  amount          Decimal             @default(0) @db.Decimal(20, 2)
+  referral_amount Decimal             @default(0) @db.Decimal(20, 2)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  user            User                @relation(fields: [userId], references: [id])
+  userId          BigInt              @unique() @map("user_id")
+  transactions    WalletTransaction[]
+
+  @@map("user_wallet")
+}
+
+enum WalletTransactionContext {
+  Referrals      @map("referrals")
+  Deposit        @map("deposit")
+  Refund         @map("refund")
+  Withdrawal     @map("withdrawal")
+  TicketPurchase @map("ticket_purchase")
+
+  @@map("wallet_transaction_context")
+}
+
+model WalletTransaction {
+  id               BigInt                   @id @default(autoincrement())
+  amount           Decimal                  @db.Decimal(20, 2)
+  availableBalance Decimal                  @map("available_balance") @db.Decimal(20, 2)
+  type             WalletTransactionType
+  entityId         BigInt?                  @map("entity_id")
+  context          WalletTransactionContext
+  meta             Json?
+  status           WalletTransactionStatus  @default(Confirmed)
+  timestamp        DateTime
+  wallet           UserWallet               @relation(fields: [walletId], references: [id])
+  walletId         BigInt                   @map("wallet_id")
+
+  @@map("wallet_transaction")
+}
+
+model AdminWallet {
+  id           BigInt                   @id @default(autoincrement())
+  amount       Decimal                  @default(0) @db.Decimal(20, 2)
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  user         Admin                    @relation(fields: [adminId], references: [id])
+  adminId      BigInt                   @unique @map("admin_id")
+  transactions AdminWalletTransaction[]
+
+  @@map("admin_wallet")
+}
+
+enum WalletTransactionStatus {
+  Pending   @map("pending")
+  Confirmed @map("confirmed")
+  Failed    @map("failed")
+
+  @@map("wallet_transaction_status")
+}
+
+enum WalletTransactionType {
+  Debit  @map("debit")
+  Credit @map("credit")
+
+  @@map("wallet_transaction_type")
+}
+
+model AdminWalletTransaction {
+  id               BigInt                  @id @default(autoincrement())
+  amount           Decimal                 @db.Decimal(20, 2)
+  availableBalance Decimal                 @map("available_balance") @db.Decimal(20, 2)
+  from             User                    @relation(fields: [from_id], references: [id])
+  from_id          BigInt
+  type             WalletTransactionType
+  entityId         BigInt?                 @map("entity_id")
+  meta             Json?
+  status           WalletTransactionStatus @default(Confirmed)
+  timestamp        DateTime
+  wallet           AdminWallet             @relation(fields: [walletId], references: [id])
+  walletId         BigInt                  @map("wallet_id")
+
+  @@map("admin_wallet_transaction")
+}
+
+model Game {
+  id              BigInt          @id @default(autoincrement())
+  price           Decimal         @db.Decimal(20, 2)
+  range           Int             @default(90)
+  purchaseLimit   Int             @map("purchase_limit")
+  isActive        Boolean         @default(true)
+  isEnded         Boolean         @default(false)
+  isStarted       Boolean         @default(false) @map("is_started")
+  isSoldOut       Boolean         @default(false) @map("sold_out")
+  resumable       Boolean         @default(false)
+  resumed         Boolean         @default(false)
+  playerLimit     Int[]           @map("player_limit")
+  numbers         String
+  dealt_numbers   Int[]
+  priceBand       Json?
+  lastDealIndex   Int?            @map("last_dealt_index")
+  poolPrize       Decimal         @map("pool_prize") @db.Decimal(20, 2)
+  collection      Decimal         @map("collection") @db.Decimal(20, 2)
+  startedAt       DateTime?       @map("started_at")
+  startDate       DateTime        @map("start_date")
+  isDeleted       Boolean         @default(false)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  purchaseStopsAt DateTime?       @map("purchase_stops_at")
+  settings        GameSettings[]
+  sheets          Sheet[]
+  claims          Claim[]
+  claimPrizeMap   ClaimPrizeMap[]
+  players         JoinGame[]
+  offers          Offers[]
+  purchases       SheetPurchase[]
+  offlinesheets   OfflineSheet[]
+
+  @@index([isStarted, isEnded, isDeleted, isActive, resumable, startDate], name: "idx_games_resumable")
+  @@map("games")
+}
+
+enum OfferType {
+  BuyGet   @map("buyget")
+  Discount @map("discount")
+  Free     @map("free")
+
+  @@map("offer_types")
+}
+
+model Offers {
+  id        BigInt          @id @default(autoincrement())
+  type      OfferType
+  buy       Int?
+  get       Int?
+  discount  Int?
+  isActive  Boolean
+  Game      Game?           @relation(fields: [gameId], references: [id])
+  gameId    BigInt?         @map("game_id")
+  purchases SheetPurchase[]
+
+  @@unique([type, gameId])
+  @@map("offers")
+}
+
+model GameSettings {
+  id     BigInt @id @default(autoincrement())
+  delay  Int
+  game   Game   @relation(fields: [gameId], references: [id])
+  gameId BigInt @map("game_id")
+
+  @@map("game_settings")
+}
+
+model JoinGame {
+  id        BigInt    @id @default(autoincrement())
+  joined_at DateTime?
+  joined    Boolean   @default(false)
+  amount    Decimal   @db.Decimal(20, 2)
+  winAmount Decimal   @map("win_amount") @db.Decimal(20, 2)
+  user      User      @relation(fields: [userId], references: [id])
+  userId    BigInt    @map("user_id")
+  game      Game      @relation(fields: [gameId], references: [id])
+  gameId    BigInt    @map("game_id")
+
+  @@unique([userId, gameId])
+  @@map("players")
+}
+
+model Sheet {
+  id              BigInt         @id @default(autoincrement())
+  uid             String         @unique
+  tickets         Ticket[]
+  price           Decimal        @db.Decimal(20, 2)
+  maxTickets      Int            @default(6)
+  isPaid          Boolean
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  isDeleted       Boolean        @default(false)
+  game            Game?          @relation(fields: [gameId], references: [id])
+  gameId          BigInt?        @map("game_id")
+  user            User           @relation(fields: [userId], references: [id])
+  userId          BigInt         @map("user_id")
+  sheetPurchase   SheetPurchase? @relation(fields: [sheetPurchaseId], references: [id])
+  sheetPurchaseId BigInt?        @map("purchase_id")
+
+  @@map("sheets")
+}
+
+model SheetPurchase {
+  id        BigInt   @id @default(autoincrement())
+  sheets    Sheet[]
+  total     Decimal  @db.Decimal(20, 2)
+  offer     Offers?  @relation(references: [id], fields: [offerId])
+  offerId   BigInt?  @map("offer_id")
+  user      User     @relation(fields: [userId], references: [id])
+  userId    BigInt   @map("user_id")
+  game      Game?    @relation(fields: [gameId], references: [id])
+  gameId    BigInt?  @map("game_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  payment   Payment?
+
+  @@map("sheet_purchases")
+}
+
+model Ticket {
+  id        BigInt   @id @default(autoincrement())
+  matrix    Json
+  claims    Claim[]
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  sheet     Sheet    @relation(fields: [sheetId], references: [id])
+  sheetId   BigInt   @map("sheet_id")
+
+  @@map("tickets")
+}
+
+enum ClaimType {
+  Corners @map("corners")
+  Early7  @map("early7")
+  Early10 @map("early10")
+  Top     @map("top")
+  Middle  @map("middle")
+  Bottom  @map("bottom")
+  House   @map("house")
+  House1  @map("house1")
+  House2  @map("house2")
+
+  @@map("claim_types")
+}
+
+enum RejectType {
+  AlreadyClaimed @map("already_claimed")
+  NotValid       @map("not_valid")
+
+  @@map("reject_types")
+}
+
+model Claim {
+  id         BigInt      @id @default(autoincrement())
+  type       ClaimType   @map("claim_type")
+  numbers    Int[]
+  claimedOn  DateTime    @map("claimed_on")
+  isValid    Boolean     @map("is_valid")
+  rejectType RejectType?
+  settled    Boolean     @default(false)
+  settled_on DateTime?   @map("settled_on")
+  timestamp  DateTime
+  isDeleted  Boolean     @default(false)
+  Ticket     Ticket?     @relation(fields: [ticketId], references: [id])
+  ticketId   BigInt      @map("ticket_id")
+  game       Game?       @relation(fields: [gameId], references: [id])
+  gameId     BigInt?
+
+  @@unique([type, ticketId])
+  @@map("claims")
+}
+
+model ClaimPrizeMap {
+  id        BigInt    @id @default(autoincrement())
+  type      ClaimType
+  amount    Decimal   @db.Decimal(20, 2)
+  isDeleted Boolean   @default(false)
+  game      Game      @relation(fields: [gameId], references: [id])
+  gameId    BigInt    @map("game_id")
+
+  @@unique([gameId, type])
+  @@map("claim_prize_map")
+}
+
+enum PaymentStatus {
+  Pending   @map("pending")
+  Confirmed @map("confirmed")
+  Failed    @map("failed")
+}
+
+enum PaymentMode {
+  Wallet @map("wallet")
+  Upi    @map("upi")
+}
+
+enum PaymentContext {
+  Recharge       @map("recharge")
+  TicketPurchase @map("ticket_purchase")
+}
+
+model Payment {
+  id            BigInt         @id @default(autoincrement())
+  amount        Decimal        @db.Decimal(20, 2)
+  status        PaymentStatus  @default(Pending)
+  mode          PaymentMode
+  ctx           PaymentContext
+  entityId      BigInt         @map("entity_id")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  isDeleted     Boolean        @default(false) @map("is_deleted")
+  user          User           @relation(fields: [userId], references: [id])
+  userId        BigInt         @map("user_id")
+  sheetPurchase SheetPurchase  @relation(fields: [purchaseId], references: [id])
+  purchaseId    BigInt         @unique @map("purchase_id")
+
+  @@map("payments")
+}
+
+model OfflineSheet {
+  id     BigInt  @id @default(autoincrement())
+  idx    Int?
+  sheet  Json
+  game   Game?   @relation(fields: [gameId], references: [id])
+  gameId BigInt? @map("game_id")
+
+  @@map("offline_sheets")
+}
+
+enum PaymentRequestStatus {
+  Pending  @map("pending")
+  Accepted @map("accepted")
+  Rejected @map("rejected")
+}
+
+enum PaymentRequestType {
+  Deposit  @map("deposit")
+  withdraw @map("withdraw")
+}
+
+model PaymentRequest {
+  id        BigInt               @id @default(autoincrement())
+  amount    Decimal              @db.Decimal(20, 2)
+  status    PaymentRequestStatus @default(Pending)
+  type      PaymentRequestType
+  utr       String?              @unique
+  meta      Json?
+  user      User                 @relation(fields: [userId], references: [id])
+  userId    BigInt               @map("user_id")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+
+  @@map("payment_requests")
+}
